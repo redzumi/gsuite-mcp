@@ -188,6 +188,13 @@ npx -y @smithery/cli install @rishipradeep-think41/gsuite-mcp --client claude
    }
    ```
 
+## Supergateway
+```shell
+docker run -it --rm -p 8000:8000 supercorp/supergateway \
+    --stdio "npx --registry=https://verdaccio.redz.sbs -y @redzumi/google-workspace-server /" \
+    --port 8000
+```
+
 ## Troubleshooting
 
 1. **Authentication Issues**:

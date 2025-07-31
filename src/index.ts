@@ -7,30 +7,20 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import { google } from "googleapis";
-
-// Environment variables required for OAuth
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
-
-if (!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN) {
-  throw new Error(
-    "Required Google OAuth credentials not found in environment variables"
-  );
-}
+import { OAuth2Client } from "google-auth-library";
+import { google, gmail_v1, calendar_v3, oauth2_v2 } from "googleapis";
 
 class GoogleWorkspaceServer {
   private server: Server;
-  private auth;
-  private gmail;
-  private calendar;
+  private auth: OAuth2Client | undefined;
+  private gmail: gmail_v1.Gmail | undefined;
+  private calendar: calendar_v3.Calendar | undefined;
 
   constructor() {
     this.server = new Server(
       {
         name: "google-workspace-server",
-        version: "0.1.0",
+        version: "0.1.4",
       },
       {
         capabilities: {
@@ -38,14 +28,6 @@ class GoogleWorkspaceServer {
         },
       }
     );
-
-    // Set up OAuth2 client
-    this.auth = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
-    this.auth.setCredentials({ refresh_token: REFRESH_TOKEN });
-
-    // Initialize API clients
-    this.gmail = google.gmail({ version: "v1", auth: this.auth });
-    this.calendar = google.calendar({ version: "v3", auth: this.auth });
 
     this.setupToolHandlers();
 
@@ -270,6 +252,28 @@ class GoogleWorkspaceServer {
     }));
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const params = request.params as {
+        name: string;
+        arguments: any;
+        config: {
+          CLIENT_ID: string;
+          CLIENT_SECRET: string;
+          REFRESH_TOKEN: string;
+        };
+      };
+
+      const CLIENT_ID = params.config.CLIENT_ID;
+      const CLIENT_SECRET = params.config.CLIENT_SECRET;
+      const REFRESH_TOKEN = params.config.REFRESH_TOKEN;
+
+      // Set up OAuth2 client
+      this.auth = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
+      this.auth.setCredentials({ refresh_token: REFRESH_TOKEN });
+
+      // Initialize API clients
+      this.gmail = google.gmail({ version: "v1", auth: this.auth });
+      this.calendar = google.calendar({ version: "v3", auth: this.auth });
+
       switch (request.params.name) {
         case "list_emails":
           return await this.handleListEmails(request.params.arguments);
@@ -318,7 +322,7 @@ class GoogleWorkspaceServer {
         return "(No body content)";
       };
 
-      const response = await this.gmail.users.messages.list({
+      const response = await this.gmail!.users.messages.list({
         userId: "me",
         maxResults,
         q: query,
@@ -327,7 +331,7 @@ class GoogleWorkspaceServer {
       const messages = response.data.messages || [];
       const emailDetails = await Promise.all(
         messages.map(async (msg) => {
-          const detail = await this.gmail.users.messages.get({
+          const detail = await this.gmail!.users.messages.get({
             userId: "me",
             id: msg.id!,
           });
@@ -393,7 +397,7 @@ class GoogleWorkspaceServer {
         return "(No body content)";
       };
 
-      const response = await this.gmail.users.messages.list({
+      const response = await this.gmail!.users.messages.list({
         userId: "me",
         maxResults,
         q: query,
@@ -402,7 +406,7 @@ class GoogleWorkspaceServer {
       const messages = response.data.messages || [];
       const emailDetails = await Promise.all(
         messages.map(async (msg) => {
-          const detail = await this.gmail.users.messages.get({
+          const detail = await this.gmail!.users.messages.get({
             userId: "me",
             id: msg.id!,
           });
@@ -473,7 +477,7 @@ class GoogleWorkspaceServer {
         .replace(/=+$/, "");
 
       // Send the email
-      const response = await this.gmail.users.messages.send({
+      const response = await this.gmail!.users.messages.send({
         userId: "me",
         requestBody: {
           raw: encodedMessage,
@@ -505,7 +509,7 @@ class GoogleWorkspaceServer {
     try {
       const { id, addLabels = [], removeLabels = [] } = args;
 
-      const response = await this.gmail.users.messages.modify({
+      const response = await this.gmail!.users.messages.modify({
         userId: "me",
         id,
         requestBody: {
@@ -561,7 +565,7 @@ class GoogleWorkspaceServer {
         attendees: attendees.map((email: string) => ({ email })),
       };
 
-      const response = await this.calendar.events.insert({
+      const response = await this.calendar!.events.insert({
         calendarId: "primary",
         requestBody: event,
       });
@@ -612,7 +616,7 @@ class GoogleWorkspaceServer {
         event.attendees = attendees.map((email: string) => ({ email }));
       }
 
-      const response = await this.calendar.events.patch({
+      const response = await this.calendar!.events.patch({
         calendarId: "primary",
         eventId,
         requestBody: event,
@@ -643,7 +647,7 @@ class GoogleWorkspaceServer {
     try {
       const { eventId } = args;
 
-      await this.calendar.events.delete({
+      await this.calendar!.events.delete({
         calendarId: "primary",
         eventId,
       });
@@ -675,7 +679,7 @@ class GoogleWorkspaceServer {
       const timeMin = args?.timeMin || new Date().toISOString();
       const timeMax = args?.timeMax;
 
-      const response = await this.calendar.events.list({
+      const response = await this.calendar!.events.list({
         calendarId: "primary",
         timeMin,
         timeMax,

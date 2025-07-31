@@ -1,8 +1,7 @@
 {
-  "name": "google-workspace-server",
-  "version": "0.1.0",
+  "name": "@redzumi/google-workspace-server",
+  "version": "0.1.4",
   "description": "A Model Context Protocol server",
-  "private": true,
   "type": "module",
   "bin": {
     "google-workspace-server": "./build/index.js"
